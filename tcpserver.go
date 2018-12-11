@@ -16,6 +16,8 @@ type Agent interface {
 	// Proceed will get called in a loop as long as no errors got returned.
 	// To stop must return an error - like ErrStop.
 	Proceed() error
+	OnConnect()
+	CloseConnect()
 }
 
 //-----------------------------------------------------------------------------
@@ -42,6 +44,7 @@ type TCPServer struct {
 	quit          chan struct{}
 	handlerGroup  *sync.WaitGroup
 	acceptorCount int
+	connectCount  int
 }
 
 // Start starts the server
@@ -81,6 +84,7 @@ func New(
 	result.agentFactory = agentFactory
 	result.quit = make(chan struct{})
 	result.handlerGroup = &sync.WaitGroup{}
+	result.connectCount = 0
 
 	if len(acceptorCount) > 0 {
 		result.acceptorCount = acceptorCount[0]
@@ -151,10 +155,19 @@ func (x *TCPServer) handler(conn net.Conn) {
 	reader := bufio.NewReader(conn)
 	writer := bufio.NewWriter(conn)
 	agent := x.agentFactory(conn, reader, writer, x.quit)
+	agent.OnConnect()
+	x.connectCount++
 	var err error
 	for err = agent.Proceed(); err == nil; err = agent.Proceed() {
 		runtime.Gosched()
 	}
+	x.connectCount--
+	agent.CloseConnect()
+}
+
+//GetTotalConnect return an totalConnect
+func (x *TCPServer) GetTotalConnect() *int {
+	return &x.connectCount
 }
 
 //-----------------------------------------------------------------------------
